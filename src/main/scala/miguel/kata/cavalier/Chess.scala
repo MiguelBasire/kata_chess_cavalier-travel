@@ -54,18 +54,45 @@ object Path {
         .filterNot(visited.contains)
         .map(board.applyMove(parent, _))
 
-      val tail = parents.head.noneTerminate.flatMap {
+      parents.head.noneTerminate.flatMap {
         case None       => Stream.empty
         case Some(head) => 
             val nextPositions = board.nextPositions(head)  
-            discoverChildren(parents.tail ++ children(head, nextPositions), visited ++ nextPositions)
+            parents.head ++ discoverChildren(parents.tail ++ children(head, nextPositions), visited ++ nextPositions)
       }
-      parents.head ++ tail
     }
 
-    Stream.emit(state) ++ discoverChildren(Stream.emit(state), visited = Set(state.position))
-
+    discoverChildren(Stream.emit(state))
   }
+
+  def bfs_lazylist[Position](state: ChessBoardState[Position])(implicit
+     board: ChessBoard[Position]
+  ): LazyList[ChessBoardState[Position]] = {
+
+    def discoverChildren(
+        parents: => LazyList[ChessBoardState[Position]],
+        visited: Set[Position] = Set.empty
+    ): LazyList[ChessBoardState[Position]] = {
+
+    def children(parent: ChessBoardState[Position], ps: List[Position]): LazyList[ChessBoardState[Position]] = LazyList
+        .from(ps)
+        .filterNot(visited.contains)
+        .map(board.applyMove(parent, _))
+
+      parents match {
+        case l if l.isEmpty => l
+        case head #:: tail => 
+          val nextPositions = board.nextPositions(head)  
+          head +: discoverChildren(tail ++ children(head,nextPositions), visited ++ nextPositions)
+
+      }
+    }
+
+     discoverChildren(LazyList(state))
+  }
+
+
+
 }
 
 

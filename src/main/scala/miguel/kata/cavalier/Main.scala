@@ -23,4 +23,13 @@ object Main extends IOApp {
       .evalTap(_ => IO(println()))
       .compile.drain
       .as(cats.effect.ExitCode.Success)
+
+    /*IO(
+      Path
+        .bfs_lazylist[BoardPosition](state)
+        .find(b => b.position == b.destination)
+    )
+      .flatMap { b => b.fold(IO(println("No solution")))(printState) }
+      .as(cats.effect.ExitCode.Success)*/
+
 }
