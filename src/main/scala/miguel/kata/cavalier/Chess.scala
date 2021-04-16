@@ -6,6 +6,7 @@ import cats.kernel.Eq
 import javax.swing.text.Position
 import cats.kernel.Monoid
 import cats.effect.IO
+import cats.effect.concurrent.Ref
 import fs2.Stream
 
 // algebra
@@ -40,33 +41,43 @@ trait ChessBoard[BoardPosition] {
 object Path {
   import fs2.Stream
 
+  type Visited[Position] = Ref[IO, Set[Position]]
+
   def bfs[Position](state: ChessBoardState[Position])(implicit
       board: ChessBoard[Position]
   ): Stream[IO, ChessBoardState[Position]] = {
 
     def discoverChildren(
         parents: Stream[IO, ChessBoardState[Position]],
-        visited: Set[Position] = Set.empty
+        visited: Visited[Position]
     ): Stream[IO, ChessBoardState[Position]] = {
 
-      def children(parent: ChessBoardState[Position], ps: List[Position]): Stream[IO, ChessBoardState[Position]] = Stream
-        .emits(ps)
-        .filterNot(visited.contains)
-        .map(board.applyMove(parent, _))
+      def children(parent: ChessBoardState[Position]): Stream[IO, ChessBoardState[Position]] =
+        Stream
+          .emits(board.nextPositions(parent))
+          .evalTap(_ => visited.get.map(println))
+          //.evalFilterNot(p => visited.get.map(_.contains(p)))
+          .evalTap(p => visited.modify(vs => (vs + p, ())))
+
+          .map(board.applyMove(parent, _))
 
       parents.head.noneTerminate.flatMap {
-        case None       => Stream.empty
-        case Some(head) => 
-            val nextPositions = board.nextPositions(head)  
-            parents.head ++ discoverChildren(parents.tail ++ children(head, nextPositions), visited ++ nextPositions)
+        case None => Stream.empty
+        case Some(parent) =>
+          Stream.emit(parent) ++ discoverChildren(parents.tail ++ children(parent), visited)
       }
     }
 
-    discoverChildren(Stream.emit(state))
+    Stream
+      .eval(Ref.of[IO, Set[Position]](Set(state.position)))
+      .flatMap { visited =>
+        discoverChildren(Stream.emit(state), visited)
+      }
+
   }
 
   def bfs_lazylist[Position](state: ChessBoardState[Position])(implicit
-     board: ChessBoard[Position]
+      board: ChessBoard[Position]
   ): LazyList[ChessBoardState[Position]] = {
 
     def discoverChildren(
@@ -74,27 +85,27 @@ object Path {
         visited: Set[Position] = Set.empty
     ): LazyList[ChessBoardState[Position]] = {
 
-    def children(parent: ChessBoardState[Position], ps: List[Position]): LazyList[ChessBoardState[Position]] = LazyList
+      def children(
+          parent: ChessBoardState[Position],
+          ps: List[Position]
+      ): LazyList[ChessBoardState[Position]] = LazyList
         .from(ps)
         .filterNot(visited.contains)
         .map(board.applyMove(parent, _))
 
       parents match {
         case l if l.isEmpty => l
-        case head #:: tail => 
-          val nextPositions = board.nextPositions(head)  
-          head +: discoverChildren(tail ++ children(head,nextPositions), visited ++ nextPositions)
+        case head #:: tail =>
+          val nextPositions = board.nextPositions(head)
+          head +: discoverChildren(tail ++ children(head, nextPositions), visited ++ nextPositions)
 
       }
     }
 
-     discoverChildren(LazyList(state))
+    discoverChildren(LazyList(state))
   }
 
-
-
 }
-
 
 case class BoardPosition(i: Int, j: Int)
 
